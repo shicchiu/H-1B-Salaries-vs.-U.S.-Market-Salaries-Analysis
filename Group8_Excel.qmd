@@ -1,0 +1,944 @@
+---
+title: "H-1B Salaries vs. U.S. Market Salaries (Excel Power Query)"
+subtitle: "Data Wrangling - Project Workflow and Report (Pairs)"
+author:
+  - name: Joanne Guo (rg53464)
+  - name: Shirley Chiu (hc34353)
+date: "December 7, 2025"
+
+format:
+  html:
+    # TOC
+    toc: true
+    toc-depth: 3
+    toc-float: true
+    toc-location: right
+    number-sections: false
+
+    # Code display
+    code-fold: false
+    code-tools: true
+    code-overflow: wrap
+    code-block-bg: true
+    code-block-border-left: "#31BAE9"
+
+    # Tables
+    df-print: paged
+
+    # Theme & fonts
+    theme: cosmo
+    fontfamily: "Helvetica"
+    fontsize: 1.1em
+    linestretch: 1.7
+    smooth-scroll: true
+
+    # Misc
+    embed-resources: true
+    link-external-newwindow: true
+
+editor: visual
+title-block-style: default
+---
+
+# Summary
+
+The H-1B visa program has long been a focal point of U.S. labor market policy, particularly in high-skill sectors like Technology, Finance, and Healthcare.
+
+The H-1B visa program is designed to attract high-skill foreign talent, but a persistent question remains: Do H-1B workers earn more or less than the broader U.S. labor market for the same roles and locations? The analysis focuses on 2023 and 2024 data across 5 states (California, New York, Texas, Washington, and New Jersey) and 6 selected occupations in 3 major industries (Technology, Finance, and Healthcare).
+
+# Goals
+
+Compare median H-1B salaries with U.S. market median salaries by:
+
+-   **Industry**: Technology (NAICS 54), Finance (NAICS 52), Healthcare (NAICS 62)
+-   **Occupation**:
+    -   Software Developers (SOC 15-1252)
+    -   Web and Digital Interface Designers (SOC 15-1255)
+    -   Financial Analysts (SOC 13-2051)
+    -   Accountants (SOC 13-2011)
+    -   Registered Nurses (SOC 29-1141)
+    -   Pharmacy Technician (SOC：29-2052)
+-   **State**: California (CA), Texas (TX), New York (NY), Washington (WA), New Jersey (NJ)
+-   **Year**: 2023, 2024
+
+------------------------------------------------------------------------
+
+# Data Sources
+
+This project integrates 3 primary datasets using 2 core linkages: **Occupation** and **State**.
+
+The **USCIS H-1B Employer Data Hub** reports occupations using SOC codes, while the **BLS OEWS** dataset uses OCC codes. In practice, OCC is simply the BLS implementation of the Standard Occupational Classification system (SOC), meaning the codes and definitions are the same. Therefore, in this project, we treat SOC and OCC as a single unified occupation code system, allowing consistent occupation-level comparisons between H-1B wages and BLS market wages.
+
+State-level alignment is achieved by merging the **MIT Living Wage Calculator** with both the **H-1B** and **BLS** datasets using state identifiers, enabling us to evaluate how wages compare against cost-of-living requirements across regions.
+
+With these unified linkages: **H-1B** (SOC) ↔ **BLS** (OCC, equivalent to SOC) and **Living Wage** ↔ **H-1B** ↔ **BLS** via State, the project provides a consistent framework for cross-occupation and cross-state salary comparison.
+
+## USCIS - H-1B Employer Data Hub
+
+**Source**: [H-1B Employer Data](https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub)
+
+![H-1B Data Hub Screenshot 1](excel%20截圖/one.png){fig-align="center"}
+
+![H-1B Data Hub Screenshot 2](excel%20截圖/two.png){fig-align="center"}
+
+![H-1B Data Hub Screenshot 3](excel%20截圖/three.png){fig-align="center"}
+
+-   **Organization:** U.S. Citizenship and Immigration Services (USCIS)
+-   **Purpose:** Provides wage and occupational information for foreign workers holding H-1B visas. Only H-1B visas retained
+-   **File Dimensions:**
+    -   2023 Q1: \[98736 rows x 96 columns\]
+    -   2023 Q2: \[231545 rows x 96 columns\]
+    -   2023 Q3: \[186390 rows x 96 columns\]
+    -   2023 Q4: \[127940 rows x 96 columns\]
+    -   2024 Q1: \[99693 rows x 96 columns\]
+    -   2024 Q2: \[123979 rows x 96 columns\]
+    -   2024 Q3: \[216471 rows x 96 columns\]
+    -   2024 Q4: \[120898 rows x 96 columns\]
+
+## **BLS — Occupational Employment and Wage Statistics (OEWS)**
+
+**Source**: [Occupational Employment and Wage Statistics](https://www.bls.gov/oes/tables.htm)
+
+![BLS OEWS Data Structure](excel%20截圖/four.png){fig-align="center"}
+
+![BLS Data Selection Interface](excel%20截圖/five.png){fig-align="center"}
+
+-   **Organization:** U.S. Department of Labor, Bureau of Labor Statistics (BLS)
+
+-   **Purpose:** Provides median annual wages for all U.S. workers by occupation and state, serving as the baseline for comparison.
+
+-   **File Dimensions:**
+
+    -   2023: \[413328 rows x 32 columns\]
+    -   2024: \[414438 rows x 32 columns\]
+
+## **MIT — Living Wage Calculator (Typical Expenses)**
+
+**Source**: [Typical Expenses](https://livingwage.mit.edu/states/48)
+
+![Typical Household Expenses by Family Composition](excel%20截圖/six.png){fig-align="center"}
+
+-   **Organization:** Massachusetts Institute of Technology (MIT)
+
+-   **Purpose:** Provides a state-level estimate of the minimum annual income required for a single adult (with no children) to maintain a basic standard of living. This provides a state-level baseline cost-of-living indicator, enabling direct comparison between wages and required living expenses. 
+
+-   **File Dimensions:**
+
+    -   CL: \[13 rows x 13 columns\]
+    -   NJ: \[13 rows x 13 columns\]
+    -   NY: \[13 rows x 13 columns\]
+    -   TX: \[13 rows x 13 columns\]
+    -   WA: \[13 rows x 13 columns\]
+
+# Selected Columns
+
+## USCIS — H-1B Employer Data Hub (9 columns)
+
+We retain these 11 columns from the original LCA disclosure dataset to capture the essential features needed for analyzing H-1B wage patterns while removing redundancy and noise. The selected variables include occupation identifiers (SOC codes and titles), employer industry classification (NAICS), and geographic fields that allow merging with external wage datasets such as the BLS OEWS. Wage-related fields (offered wage, unit of pay, prevailing wage unit, and OES year) are included to standardize compensation across filings and detect inconsistencies in employer-reported wages. Finally, we keep the visa classification to filter for H-1B applications specifically, ensuring the analysis remains focused on the target population.
+
+| Column Name | Data Type | Description | Example | Notes |
+|---------------|---------------|---------------|---------------|---------------|
+| JOB_TITLE | String | Job title listed on the LCA | "Software Developer" | Used to filter occupations and compare wage differences across job roles. Helps identify job-specific wage patterns. |
+| SOC_CODE | String | Standard Occupational Classification code identifying the job category. | “15-1252” | Ensures job categories are standardized across filings. Critical for grouping similar occupations, avoiding inconsistent job titles. |
+| SOC_TITLE | String | Name of the occupational category corresponding to the SOC code. | “Software Developers” | Makes results more interpretable in tables/visualizations. Used to validate `SOC_CODE` accuracy. |
+| NAICS_CODE | String | Industry classification code for the employer. | “541512” | Allows analysis of wage differences across industries. Useful for controlling for industry effects. |
+| WORKSITE_STATE | String | Two-letter state code of the work location. | “TX” | Used for state-level wage comparison and mapping. Important for regional wage normalization. |
+| WAGE_RATE_OF_PAY_FROM | Numeric | Offered wage paid to the worker. | 80000 | Main outcome variables. |
+| WAGE_UNIT_OF_PAY | String | Unit for the offered wage. | “Year” | Essential for converting all wages into a standard unit (e.g., yearly). Prevents misinterpretation of salary values. |
+| PW_UNIT_OF_PAY | String | Unit for the prevailing wage. | “Year” | Helps verify consistency with `WAGE_UNIT_OF_PAY`; important for detecting errors in the dataset. |
+| VISA_CLASS | String | Visa type (H-1B, H-1B1, E-3). | “H-1B” | Necessary for filtering only H-1B applications; removes non-H-1B noise from analysis. |
+
+## **BLS — Occupational Employment and Wage Statistics (OEWS) (**3 columns)
+
+We retain these four variables from the full OEWS dataset to capture the essential wage information needed to compare overall U.S. labor market wages with H-1B offered wages. NAICS and SOC codes allow us to align industry and occupation categories with the LCA data, ensuring comparability across datasets. The median annual wage field provides standardized compensation benchmarks for each occupation within each state, enabling geographic and occupational wage comparisons. State-level identifiers are kept to support merging with LCA worksite locations and to analyze wage differences across regions.
+
+| Column Name | Data Type | Description | Example | Notes |
+|---------------|---------------|---------------|---------------|---------------|
+| OCC_CODE | String | SOC occupational code used to classify job roles. | “15-1252” | Required for merging with LCA `SOC_CODE` and for occupation-level wage comparison. |
+| A_MEDIAN | Float | Median annual wage for the occupation in a given area. | 104560 | Serves as the baseline U.S. wage benchmark to compare against H-1B offered wages. |
+| AREA_TITLE | String | Name of the geographic area, often representing the state. | “Texas” | Used to merge with LCA `WORKSITE_STATE` and perform state-level wage comparison. |
+
+## **MIT — Living Wage Calculator (Typical Expenses)**
+
+We retain this variable from the MIT Living Wage Calculator dataset to incorporate a standardized cost-of-living benchmark into our wage comparison. This measure estimates the minimum annual income required for a single adult with no children to meet basic living expenses in each county. Including this column allows us to contextualize both BLS median wages and H-1B offered wages relative to the actual local cost of living. This provides a more realistic assessment of whether wages reported in the LCA filings align with economic conditions in the worker’s location.
+
+| Column Name | Data Type | Description | Example | Notes |
+|---------------|---------------|---------------|---------------|---------------|
+| Required annual income before taxes (1 Adult, 0 Children) | Float | Estimated annual income needed for a single adult with no children to meet the basic cost of living. | 38,765 | Used to compare H-1B offered wages and BLS median wages against local living-wage requirements; provides cost-of-living context for each state. |
+
+------------------------------------------------------------------------
+
+# Wrangling Process
+
+# **Handling File Size Prior to Import**
+
+During the initial import process, several of the original Excel files failed to load successfully in Power Query due to their extremely large size (hundreds of thousands to millions of rows, with dozens of columns per file), resulting in repeated import errors and processing failures.
+
+To address this issue, we performed a manual, pre-import reduction step on each file. Specifically, we identified and removed columns that were irrelevant to our analysis before loading the datasets into Power Query.
+
+This manual trimming significantly reduced file size and complexity, allowing the datasets to be successfully imported, refreshed, and transformed within Excel without further errors. It also improved refresh performance and prevented system crashes during subsequent transformation steps.
+
+# **Data Loading**
+
+All raw datasets were imported into Excel Power Query directly from individual Excel workbooks using the “Get Data → From File → From Excel Workbook” option, as shown in Figure X. We imported files from four separate sources:
+
+H1B: 8 quarterly disclosure files across FY2023 and FY2024
+
+BLS: 2 occupational wage datasets for 2023 and 2024
+
+Living Cost: 5 state-level cost-of-living spreadsheets
+
+Mapping Tables: Industry mapping and NAICS mapping\
+\> To standardize industry classifications across data sources, we created two custom mapping tables in Excel (Industry Mapping and NAICS Mapping) that link source industry codes to NAICS classifications.
+
+**Data Loading** ![](excel%20截圖/load%20data.jpg)
+
+**Mapping Tables Structure**![](excel%20截圖/mapping_indus.jpg)
+
+![](excel%20截圖/mapping_nas.jpg)
+
+# ======
+
+# **H1B Dataset**
+
+# Step 1: Data Combination
+
+## 1.1 Combine Quarterly Data
+
+### Challenge
+
+H-1B data is distributed across 4 quarterly files, making it difficult to analyze yearly trends.
+
+### Solution
+
+We used Power Query’s “Append Queries” feature to vertically combine Q1–Q4 into a single consolidated table.The same process was repeated for the 2024 quarterly files to produce a unified dataset for the 2024 analysis.
+
+![](excel%20截圖/append%20data.jpg)
+
+![](excel%20截圖/append%20data%202.jpg)
+
+# Step 2: Data Filtering
+
+## 2.1 Filter State, Occupation, Visa, and Industry
+
+**Challenge**\
+Dataset contains millions of records across all states and occupations, requiring focused filtering for analysis scope.
+
+**Solution**\
+Apply sequential rule-based filtering to retain only target records.
+
+### 2.1.1 State Filter - Retain only 5 target states:
+
+**Process:**\
+1. Click dropdown arrow on WORKSITE_STATE column\
+2. Select only: CA, TX, NY, WA, NJ\
+![](excel%20截圖/filter%20state.jpg)
+
+### 2.1.2 SOC Code Standardization - Extract first 7 characters to remove ".00":
+
+**Process:**\
+1. Add Custom Column\
+2. Function Used: Text.Start(\[SOC_CODE\], 7)\
+3. Column Name: SOC_CODE_clean\
+![](excel%20截圖/add%20soc%20new.jpg)
+
+### 2.1.3 Occupation Filter - Keep 6 target occupations and Visa Type Filter - H-1B only:
+
+**Process:**\
+1. Click dropdown arrow on SOC_CODE_clean and VISA_CLASS column\
+2. Select only 6 target occupations and H-1B vias class\
+![](excel%20截圖/filter%20soc+visa.jpg)
+
+### 2.1.4 NAICS Standardization - Extract 2-digit industry code:
+
+### Challenge
+
+NAICS_CODE column is stored as Number data type in raw data and Text.Start() function only works with Text data type.
+
+### Solution
+
+Use Number.ToText() to convert number to text
+
+**Process:**\
+1. Add Custom Column\
+2. Function Used: Text.Start(Text.From(\[NAICS_CODE\]), 2)\
+3. Column Name: NAICS_2digit\
+![](excel%20截圖/add%20naics%202.jpg)
+
+### 2.1.5 Industry Filter - Keep 3 industries (Tech=54, Finance=52, Healthcare=62):
+
+**Process:**\
+1. Click dropdown arrow on NAICS_2digit column\
+2. Select only 3 target industries\
+![](excel%20截圖/filter%20na.jpg)
+
+# Step 3: Standardize Wage Columns to Annual Salary
+
+**Challenge**\
+Wage units vary across records (Year, Hour, Week, Bi-Weekly, Month), making direct comparison impossible. Plus, WAGE_UNIT_OF_PAY and PW_UNIT_OF_PAY fields are sometimes inaccurate.\
+
+Why does this inconsistency occur? These discrepancies are potentially caused by manual data entry errors.\
+Evidence of human error includes:\
+Fields showing mismatched units between WAGE_UNIT_OF_PAY and PW_UNIT_OF_PAY Cases where both fields show "Hour" but the wage amount is unrealistically high (e.g., \$80,000/hour instead of \$80,000/year) Apparent confusion about which unit corresponds to the entered wage amount
+
+These errors suggest that employers or their representatives sometimes enter the wage amount correctly but select the wrong unit, or vice versa.\
+
+**Solution**\
+Convert all wages to annual salary using consistent multipliers. Plus, only convert wages where both unit fields agree.
+
+**Process:**\
+1. Add Custom Column\
+2. Name: ANNUAL_WAGE\
+3. Function Used: Nested if-then-else statements\
+4. Formula structure:\
+Check if WAGE_UNIT_OF_PAY = PW_UNIT_OF_PAY (validation)\
+If "Year" → use value as-is\
+If "Hour" → multiply by 2,080\
+If "Week" → multiply by 52\
+If "Bi-Weekly" → multiply by 26\
+If "Month" → multiply by 12\
+Else → null\
+![](excel%20截圖/add%20anuel%20wage.jpg)
+
+# Step 4: Column Selection
+
+## 4.1 Select Relevant Columns
+
+**Process:**\
+1. Right-click Choose Columns\
+2. Select only: WORKSITE_STATE SOC_CODE_clean SOC_TITLE NAICS_2digit ANNUAL_WAGE
+
+![](excel%20截圖/chose%20col.jpg)
+
+# Step 5: Compute Median Wages
+
+## 5.1 Create Custom Median Function
+
+### Challenge
+
+Power Query lacks a native median function (only has List.Average(), List.Min(), List.Max()).
+
+### Solution
+
+Define a reusable M function to compute median of numeric lists.
+
+**Process:**\
+1. Home \> Advanced Editor\
+2. Logic:\
+If count is even: average of two middle values\
+If count is odd: single middle value\
+![](excel%20截圖/median%20fn.jpg)
+
+## 5.2 Median Salaries
+
+### Challenge
+
+Multiple salary entries exist for same state-occupation-industry combinations.
+
+### Solution
+
+Group by state, occupation, and industry, then calculate median using custom function.
+
+**Process:**\
+1. Transform \> Group By\
+2. Group by columns:\
+WORKSITE_STATE\
+SOC_CODE_clean\
+NAICS_2digit\
+3. New column name: median_salary\
+4. Operation: Median
+
+![](excel%20截圖/group.jpg)
+
+## 5.3 Change data type
+
+**Process:**\
+1. Click highlighted UI icon ![](excel%20截圖/chan%20type.jpg)
+
+# Step 6: Data Validation - Industry-Occupation Mapping
+
+## 6.1 Keep Valid Occupation-Industry Pairs Only
+
+### Challenge
+
+Not all occupation-industry combinations are meaningful for analysis. For example, software developers (15-1252) appear across multiple industries, but we want to focus on their primary industry (Tech Services).
+
+### Solution
+
+Create a lookup table of valid SOC-NAICS pairs and use inner_join() to keep only these focused occupation-industry pairs.
+
+**Process:**\
+1. Home \> Merge Queries\
+2. In Merge dialog:\
+Left table: H1B_2023_Median\
+Select columns: SOC_CODE_clean, NAICS_2digit\
+Right table: NAICS_Mapping\
+Select columns: SOC_CODE_clean, NAICS_CODE_clean\
+Join Kind: Inner (only matching rows) To keep only rows that match in both tables and filters out invalid occupation-industry combinations\
+![](excel%20截圖/inner%20join.jpg)
+
+# **The same process was repeated for the 2024 dataset.**
+
+![](excel%20截圖/h1b%202024%20view.jpg)
+
+# ======
+
+# **BLS Dataset**
+
+# Step 1: Import BLS Dataset
+
+BLS data is in single Excel file but contains multiple worksheets; need to select correct data sheet. If first row contains column names, click Promote Headers
+
+![![](excel%20截圖/bls%20header.jpg)](excel%20截圖/bls%20chose%20sheet.jpg)
+
+# Step 2: Cleaning and Filtering the Dataset
+
+## 2.1 Filter by State
+
+We created lists of the states and SOC codes we wanted to analyze. Using these lists, we filtered the BLS dataset so that only the rows matching our target states and occupations remain.
+
+**Process:**\
+1. Click dropdown arrow on AREA_TITLE column\
+2. Check only:\
+California\
+Texas\
+New York\
+Washington\
+New Jersey\
+![](excel%20截圖/bls%20filter%20state.jpg)
+
+## 2.2 Filter Occupations by SOC Code
+
+**Process:**\
+1. Click dropdown arrow on OCC_CODE column\
+2. Check only 6 target occupations\
+![](excel%20截圖/bls%20filter%20soc.jpg)
+
+## 2.3 Select Essential Columns
+
+**Process:**\
+1. Click Choose Columns\
+2. Check only essential columns\
+![](excel%20截圖/bls%20remove%20col.jpg)
+
+## 2.4 Rename Essential Columns
+
+### Challenge
+
+It uses "OCC code" as the column name for occupational classification. However, OCC code and SOC code are the same classification system:\
+SOC (Standard Occupational Classification) is the official name\
+OCC code is shorthand for "Occupational code" commonly used by BLS\
+Both refer to the same occupational classification system
+
+### Solution
+
+To ensure consistent data integration, we standardize all occupational code columns to SOC_code for easier merging and analysis.
+
+**Process:**\
+1. double-click column header\
+2. Rename columns\
+![](excel%20截圖/bls%20rename%20col.jpg)
+
+## 2.5 Change data type
+
+**Process:**\
+1. Click highlighted UI icon
+
+![](excel%20截圖/bla%20chan%20type.jpg)
+
+# Step 3: Add NAICS Classification to BLS
+
+Need to join NAICS codes from mapping table to BLS data using SOC_CODE as the key.
+
+**Process:**\
+1. Home \> Merge Queries\
+2. In Merge dialog:\
+Left table: BLS_2023_Clean\
+Select columns: SOC_CODE\
+Right table: NAICS_Mapping Select columns: SOC_CODE\
+Join Kind: Left Outer (all from first, matching from second) To keep all BLS records even if no NAICS match found\
+![](excel%20截圖/bls%20left%20join.jpg)
+
+## 3.1 Expand Merged Column
+
+After merge, you'll see new column NAICS_Mapping containing tables. Click expand icon (⇄) in NAICS_Mapping column header
+
+![](excel%20截圖/bla%20expand%20na.jpg)
+
+# Step 4: Add Year Column
+
+**Process:**\
+1. Add Custom Column\
+2. Formula: "2023"\
+![](excel%20截圖/bls%20add%20year.jpg)
+
+# **The same process was repeated for the 2024 dataset.**
+
+![](excel%20截圖/bls%202024%20view.jpg)
+
+# ======
+
+# **Typical Expenses Dataset**
+
+# Step 1: Import Typical Expenses Dataset
+
+Select correct data sheet. If first row contains column names, click Promote Headers
+
+![](excel%20截圖/exp%20chose%20sheet.jpg)
+
+![](excel%20截圖/exp%20header.jpg)
+
+# Step 2: Clean California Living Cost Dataset
+
+### Challenge
+
+Raw Excel files contain:\
+Multi-row headers (row 1: number of adults, row 2: number of children)\
+Wide format with multiple household configurations\
+
+### Solution
+
+Skip problematic header rows, manually rename columns, and add state identifier.
+
+## 2.1 Remove Header Rows
+
+**Process:**\
+1. Home \> Remove Rows \> Remove Top Rows\
+2. Number of rows: 2\
+![](excel%20截圖/exp%20remove.jpg)
+
+## 2.2 Add State Identifier
+
+**Process:**\
+1. Add Custom Column\
+2. Formula: "CA"\
+![](excel%20截圖/exp%20add%20state%20col.jpg)
+
+# **The same process was repeated for the NJ, NY, TX, WA dataset.**
+
+**NJ** ![](excel%20截圖/nj.jpg) **NY** ![](excel%20截圖/ny.jpg) **TX** ![](excel%20截圖/tx.jpg) **WA** ![](excel%20截圖/wa.jpg)
+
+# Step 3: Data Combination and Transformation
+
+## 3.1 Combine Tables and Reshaping to Long Format
+
+### Challenge
+
+Data is fragmented by state and stored in wide format (multiple household type columns).
+
+### Solution
+
+Append all state tables vertically, then unpivot to long format.
+
+### 3.1.1 Combine Tables
+
+**Process:**\
+1. Home \> Append Queries \> Append Queries as New\
+2. Select "Three or more tables"\
+3. Select tables\
+![](excel%20截圖/exp%20combine.jpg)
+
+### 3.1.2 Unpivot to long format
+
+**Process:**\
+1. Select columns: Category, State (Ctrl+Click)\
+2. Right-click selected columns \> Unpivot Other Columns\
+3. Attribute column rename to "Household_type" Value column rename to "Amount"\
+![](excel%20截圖/exp%20unpivot.jpg)
+
+![](excel%20截圖/exp%20unpivot%202.jpg)
+
+## 3.2 Change data type
+
+**Process:**\
+1. Click highlighted UI icon
+
+![](excel%20截圖/exp%20change%20num%20type.jpg)
+
+# ======
+
+# **Visualization**
+
+# RQ1: Industry-Level Salary Comparison
+
+### Challenge
+
+H-1B and BLS datasets use different column names and structures.
+
+### Solution
+
+Combine multi-year data first, then merge datasets by occupation-industry keys, add industry names, and aggregate by industry.
+
+# Step 1: Combine Both Years - H-1B and BLS Data
+
+**Process:**\
+1. Home \> Append Queries \> Append Queries as New\
+2. Select "Two tables"\
+3. Rename query
+
+**H1B_all**
+
+![](excel%20截圖/combine%20all%20h1b.jpg)
+
+**BLS_all**
+
+![](excel%20截圖/combine%20all%20bls.jpg)
+
+# Step 2: Merge H1B with BLS Data
+
+**Process:**\
+1. Home \> Merge Queries \> Merge Queries\
+2. Settings in Merge dialog:\
+First table: H1B_all\
+Select columns:\
+SOC_CODE_CLEAN\
+NAICS_CODE_CLEAN\
+Year\
+Second table: BLS_all\
+Select matching columns:\
+SOC_CODE\
+NAICS_Mapping.NAICS_Match\
+year\
+Join Kind: Left Outer (all from first, matching from second)\
+![](excel%20截圖/rq1%20merge.jpg)
+
+![](excel%20截圖/rq1%20merge%202.jpg)
+
+## 2.1 Expand BLS Columns
+
+After merge, you'll see new column containing tables. Click expand icon (⇄) in BLS_all column header
+
+![](excel%20截圖/rq1%20expand%20bls.jpg)
+
+# Step 3: Merge with Industry Mapping
+
+**Process:**\
+1. Home \> Merge Queries \> Merge Queries\
+2. Settings in Merge dialog:\
+First table: RQ1\
+Select column: NAICS_CODE_CLEAN\
+Second table: Industry_Mapping\
+Select column: NAICS_Code\
+Join Kind: Left Outer (all from first, matching from second)
+
+![](excel%20截圖/rq1%20merge%20indu%20name.jpg)\
+
+## 3.1 Expand BLS Columns
+
+After merge, you'll see new column containing tables. Click expand icon (⇄) in Industry_Mapping column header
+
+![](excel%20截圖/rq1%20expand%20indu%20name.jpg)
+
+# Step 4: Group and Aggregate by Industry
+
+**Process:**\
+1. Transform \> Group By \> Click "Advanced" button\
+2. Group by columns:Year、ndustry_Mapping.Industry_Name\
+New column aggregations:\
+First Aggregation:\
+New column name: H1B_Median\
+Operation: Average\
+Column: median_salary\
+Second Aggregation:\
+New column name: BLS_Median\
+Operation: Average\
+Column: BLS_all.A_MEDIAN\
+![](excel%20截圖/rq1%20group.jpg)\
+3.Rename column\
+![](excel%20截圖/rq1%20rename.jpg)
+
+# Step 5: Unpivot for Chart Visualization
+
+Need data in long format for charting - convert salary columns to rows.
+
+**Process:**\
+1. Select columns: Year, Industry (Ctrl+Click)\
+2. Right-click selected columns \> Unpivot Other Columns\
+3. Attribute column rename to "Type" Value column rename to "Salary"\
+![](excel%20截圖/rq1%20unpivot.jpg)
+
+![](excel%20截圖/rq1%20unpivot%202.jpg)
+
+# Step 6: Visualization
+
+## 6.1 Create PivotChart
+
+**Process:**\
+1. Select the RQ1 data range\
+2. Insert tab \> Charts group \> PivotChart button
+
+![](excel%20截圖/rq1%20vis.jpg)
+
+## 6.2 PivotChart Fields
+
+The PivotTable Fields panel appears on the right side of the screen.
+
+![](excel%20截圖/rq1%20select%20vis.jpg)
+
+![](excel%20截圖/rq1.jpg.png)
+
+# RQ2: State-Level Three-Way Salary Comparison
+
+### Challenge
+
+Need to combine H-1B salary data with BLS state-level wage data and typical expenses to calculate affordability metrics for each state.
+
+### Solution
+
+Merge H1B_2024 with state-level BLS data, group by state to calculate averages, then add cost of living data to compare.
+
+## Step 1: Group BLS Data by State (Pre-processing)
+
+**Process:**\
+1. Transform \> Group By\
+2. Group by columns:\
+PRIM_STATE\
+3. New column name: Median_state
+
+![](excel%20截圖/bls%20group.jpg)
+
+## Step 2: Merge H1B with Pre-Grouped BLS State Data
+
+**Process:**\
+1. Home \> Merge Queries \> Merge Queries\
+2. Settings in Merge dialog:\
+First table: H1B_2024_Clean\
+Select column: WORKSITE_STATE\
+Second table: BLS_2024 data_State\
+Select column: PRIM_STATE\
+Join Kind: Left Outer (all from first, matching from second)\
+![](excel%20截圖/rq2%20merge.jpg)
+
+## 2.1 Expand BLS Columns
+
+After merge, you'll see new column containing tables. Click expand icon (⇄) in BLS_2024 data_State column header
+
+![](excel%20截圖/rq2%20expand.jpg)
+
+## Step 3: Group by State and Calculate H-1B Averages Median
+
+**Process:**\
+1. Transform \> Group By\
+2. Group by columns:\
+WORKSITE_STATE\
+3. New column name: H1B_M_State、BLS_M_State\
+![](excel%20截圖/rq2%20group.jpg)
+
+## Step 4: Merge with Typical Expenses Data
+
+**Process:**\
+1. Home \> Merge Queries \> Merge Queries\
+2. Settings in Merge dialog:\
+First table: RQ2\
+Select column: WORKSITE_STATE\
+Second table: Typical_Expenses_all\
+Select column: State\
+Join Kind: Left Outer (all from first, matching from second)\
+![](excel%20截圖/rq2%20merge%202.jpg)
+
+## 4.1 Expand Typical Expenses Columns
+
+After merge, you'll see new column containing tables. Click expand icon (⇄) in Typical_Expenses_all data_State column header
+
+![](excel%20截圖/rq2%20expand%202.jpg)
+
+# Step 5: Visualization
+
+## 5.1 Create PivotChart
+
+**Process:**\
+1. Select the RQ1 data range\
+2. Insert tab \> Charts group \> PivotChart button
+
+![](excel%20截圖/rq2%20vis.jpg)
+
+## 5.2 PivotChart Fields
+
+The PivotTable Fields panel appears on the right side of the screen.
+
+![](excel%20截圖/rq2%20select%20vis.jpg)
+
+## 5.3 Value Label Formatting in “K” Units
+
+Reducing label clutter and improving readability
+
+**Process:**\
+1. Select the numeric values in the PivotTable that appear in the chart.\
+2. Right-click the selected cells and go to the Number tab and select Custom.\
+3. In the Type field, enter the custom format code:#,###,K . To display the number with thousand separators.
+
+![](excel%20截圖/RQ2%20圖%20單位.jpg)
+
+![](excel%20截圖/rq2.jpg.png)
+
+------------------------------------------------------------------------
+
+# Why we analyze both RQ1 and RQ2
+
+We designed RQ1 and RQ2 to address the H-1B salary question from two complementary perspectives:
+
+**RQ1: Industry-Level Salary Comparison** focuses on **specific occupations within specific industries**, which allows us to compare H-1B and BLS salaries on a “same-job, same-industry” basis. This controls for differences in occupation and prevents cross-industry bias when evaluating wage competitiveness.
+
+**RQ2: State-Level Three-Way Salary Comparison** , instead, examines **state-level salary conditions** without filtering occupations. The purpose is to understand the broader geographic wage environment—whether H-1B salaries remain competitive once we consider regional labor markets and local living-wage requirements.
+
+By combining RQ1 and RQ2, the analysis distinguishes occupation-driven differences (RQ1) from geographic variation (RQ2).
+
+In other words, RQ1 isolates occupation and industry to answer whether H-1B workers receive different pay for the same roles, whereas RQ2 purposefully looks at all H-1B workers in each state to understand the broader wage environment relative to market benchmarks and cost of living.
+
+# Broader Extensions for Future Study
+
+In addition to extending the current analyses, the overall project can evolve into several broader research directions that go beyond occupation-industry or state-level comparisons:
+
+## 1. Job Title Analysis
+
+Although our dataset includes detailed job_title information, we did not perform a full analysis at the job-title level in the current study. Our research design intentionally focused on six target SOC codes (15-1252, 15-1255, 13-2051, 13-2011, 29-1141, 29-2052), which already provided a meaningful occupation boundary for comparing high-skill H-1B roles across industries and states.
+
+However, even within the same SOC, there are meaningful variations among specific job titles (e.g., “Software Engineer” vs. “Machine Learning Engineer,” or “Financial Analyst” vs. “Risk Analyst”). These distinctions may capture emerging skills or specialized functions that are not fully represented by SOC definitions alone.
+
+In future work, job titles could be standardized and clustered using text-mining or NLP approaches, allowing us to examine sub-occupation wage differences and identify specialized roles that consistently command higher or lower H-1B salaries. This would extend the analysis beyond SOC-level comparisons and reveal more nuanced patterns within each profession.
+
+## 2. Demographic and Equity Dimensions
+
+Explore whether wage outcomes differ **across demographic groups**, if such attributes become available in future releases:
+
+-   Gender
+
+-   Nationality
+
+-   Country of education
+
+-   Country of origin
+
+Examining demographic wage variation would connect the project to broader discussions about **equity, representation, and diversity**, revealing whether certain groups receive systematically higher or lower wages within the H-1B population.
+
+## 3. Employer-Level Salary Variation
+
+Instead of comparing workers across states and industries, we could investigate differences across employers. For example:
+
+-   Which companies pay the highest H-1B salaries?
+
+-   Do large tech firms consistently dominate the upper end of the wage distribution?
+
+-   Are some employers systematically paying below market benchmarks?
+
+This would help reveal whether salary variation is primarily driven by labor markets or by employer-specific wage practices.
+
+## 4. Policy and Regulatory Impact Over Time
+
+Analyze how wages change before and after major policy shifts, instead of only comparing salaries across sectors or states. This could include:
+
+-   USCIS adjudication policies
+
+-   Visa cap changes
+
+-   Wage-threshold regulations
+
+Understanding how policy reforms influence employer wage-setting behavior would shift the project toward policy evaluation rather than purely descriptive comparison and could reveal whether policy updates meaningfully raise wages or simply shift hiring patterns.
+
+## 5. What If There Were No H-1B?” Analysis
+
+Using employment counts and wage gaps, we could examine how dependent particular industries are on H-1B workers:
+
+-   Which states would face severe labor shortages?
+
+-   Which occupations rely most heavily on H-1B hiring?
+
+Such analysis has strong policy relevance.
+
+## 6. Geographic Mapping
+
+Explore more interactive and customizable geographic visualization tools beyond basic Excel mapping.
+
+-   Transition to Power BI for automatic state recognition
+
+-   Add drill-down views and interactive tooltips
+
+-   Customize color gradients and mapping layers
+
+-   Explore Tableau or Python libraries (e.g., Plotly, Folium) for choropleth maps
+
+Improving the geographic interface would provide clearer cross-state comparisons and allow users to explore salary variation more dynamically, making the analysis more intuitive and policy-relevant.
+
+------------------------------------------------------------------------
+
+# Takeaways
+
+## R
+
+R provided a reproducible, script-based workflow for consolidation, normalization, and aggregation across quarters and data sources. Using DuckDB avoided repeatedly loading multiple Excel files, while tidyverse pipelines expressed each step clearly and consistently. For example, we used:
+
+-   `bind_rows()` to combine quarterly datasets
+-   `case_when()` to convert wage units to annual salary
+
+Additional functions such as `str_sub()`, `pivot_longer()`, `group_by()`, `median()`, `inner_join()`, and `left_join()` filtered occupations and industries, standardized codes, and aggregated salaries at the state × occupation × industry level. Lookup tables ensured valid SOC–NAICS combinations, maintaining alignment across all data sources.
+
+## Pandas
+
+In this project, Pandas served as a fast, flexible in-memory environment for exploratory wrangling. Since everything ran directly in the notebook, it was easy to iterate and verify assumptions without setting up a database layer. For example, we used:
+
+-   `query()` to quickly filter H-1B records by SOC and NAICS,
+-   `np.select()` to standardize different wage units into a single annual metric.
+
+These transformations were immediately visible, allowing us to adjust logic and confirm results within seconds. Using `melt()` also made it easy to create quick exploratory visuals right after cleaning, which helped validate our steps and build confidence before moving on.
+
+## SQL
+
+SQL provided a centralized environment for large-scale cleaning and harmonization before analysis. By pushing standardization and aggregation into the database, we avoided repeatedly processing the same raw files in other tools. For example, we used:
+
+-   `SUBSTR()` to standardize occupation and industry codes,
+-   `CASE WHEN` to convert wages into annual salary.
+
+In addition, using `GROUP BY` with median functions summarized salaries at the state–occupation–industry level, while `JOIN` aligned H-1B, BLS, and living-expense data into a single consistent structure. This approach kept computationally heavy steps in the database and reduced repeated processing elsewhere.
+
+## Excel
+
+Excel Power Query supported early-stage cleaning and reduction of the raw files before further analysis. By removing non-essential columns and combining quarterly files directly in the interface, we could reduce noise and standardize structure before importing into other tools. For example, we used:
+
+-   **Append Queries** and **Merge Queries** to combine files,
+-   **Unpivot Columns** to reshape state-level expense data from wide to long format.
+
+Nested if–then–else logic, **Custom Column**, and **Group By** also helped standardize SOC/NAICS codes and convert different wage units into annual salary. These UI-driven transformations produced a smaller and more uniform dataset suitable for consistent downstream comparisons.
+
+## Overall Takeaway
+
+Across Pandas, SQL, R, and Excel Power Query, we developed four independent data-wrangling pipelines that followed the same steps and produced the same analytical outcome. Even though each tool—code-based or UI-based—uses different syntax, the logic was intentionally aligned: filtering target occupations and industries, standardizing wage units, merging state-level data, and computing median values by state × occupation × industry.
+
+By constructing parallel workflows in four environments, we demonstrated that the final results are not tool-dependent. Instead, the same data decisions, rules, and transformations consistently generate the same conclusions, regardless of whether they were implemented through spreadsheet interfaces, notebook operations, or database queries.
+
+This also highlights a key takeaway: when transformation logic is clearly defined, multiple technologies can reliably produce equivalent datasets—providing flexibility in tooling while maintaining analytical integrity.
+
+------------------------------------------------------------------------
+
+# How we resolved challenges that we’re particularly proud of
+
+## Living Wage Header Formatting
+
+Across all four frameworks, we encountered the same difficulty with the Living Wage dataset: multiple header rows, merged cells, and non-standard worksheet structures prevented the file from being parsed correctly on first import. This was not a limitation of any specific language, but a structural issue in the original Excel file. To resolve this, each framework required a preliminary cleaning step to standardize column names and reshape the table into a tidy format before any meaningful aggregation or joining could be performed. Although the exact syntax differed (e.g., `read_excel(() and`pivot_longer`in R,`skiprows`and`melt\` in Pandas, manual header promotion in Power Query, and pre-cleaning before loading into SQL), each version ultimately produced a clean, consistent dataset that could be used for state-level and industry-level analysis. This ensured that all downstream analyses relied on the same standardized representation of Living Wage values.
+
+## Inconsistent wage units
+
+Another issue that appeared across all four frameworks was the inconsistency in wage units within the H-1B dataset. Wage information can be reported as hourly, weekly, monthly, or annually, and the prevailing wage sometimes uses a different unit than the offered wage. Although each framework imported the dataset successfully, none of them could produce valid comparisons without addressing the unit mismatch first. To resolve this, we implemented a unified conversion rule that standardized both `WAGE_UNIT_OF_PAY` and `PW_UNIT_OF_PAY` into annual salary values before conducting any aggregation or cross-dataset comparison. While the implementation details differed in each language, the underlying logic remained the same and ensured that all wage values were comparable across industries, states, and years. This preprocessing step was essential for producing reliable results and avoiding misleading interpretations in subsequent visualizations and analyses.
+
+------------------------------------------------------------------------
+
+# Potential improvements
+
+## 1. Modularize Steps by Reusable Functions
+
+Each pipeline could define reusable functions/modules for repeated steps (e.g., wage conversion, SOC standardization, NAICS mapping). This would:
+
+-   Avoid repeated code blocks
+-   Localize logic
+-   Reduce risk of inconsistencies
+-   Improve maintainability
+
+## 2. Add a Unified High-Level Pipeline Diagram
+
+All four pipelines currently mirror the same logical steps, but a visual workflow diagram (e.g., flowchart or step boxes) would help readers quickly understand the full process from raw data to visualization without reading each language section. This would clarify:
+
+-   Data sources → cleaning → standardization → aggregation → merging → analysis
+
+-   Where each dataset enters the pipeline
+
+-   Which steps are identical vs tool-specific
+
